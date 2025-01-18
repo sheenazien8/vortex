@@ -156,6 +156,7 @@ func (c *Client) doRequest(method, endpoint string, body interface{}) (response 
 		}
 
 		w.Header().Set("StatusCode", fmt.Sprintf("%d", resp.StatusCode))
+		w.WriteHeader(resp.StatusCode)
 		_, err = w.Write(respBody)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -171,7 +172,7 @@ func (c *Client) doRequest(method, endpoint string, body interface{}) (response 
 	handler.ServeHTTP(recorder, req)
 
 	return &Response{
-		StatusCode: recorder.Code,
+		StatusCode: recorder.Result().StatusCode,
 		Body:       recorder.Body.Bytes(),
 		Output:     c.output,
 		Request: &request,
