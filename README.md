@@ -11,6 +11,7 @@ go get github.com/sheenazien8/vortex
 - [x] POST, GET, DELETE, PUT, PATCH, DELETE
 - [x] Middleware
 - [x] Generate curl command
+- [x] Hook 
 - [ ] Form Data Support
 - [ ] Form Upload Support
 
