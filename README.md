@@ -12,6 +12,7 @@ go get github.com/sheenazien8/vortex
 - [x] Middleware
 - [x] Generate curl command
 - [x] Hook 
+- [x] Stream Request (Experimental) 
 - [ ] Form Data Support
 - [ ] Form Upload Support
 
@@ -102,7 +103,6 @@ resp, err := apiClient.
 
 ## Hook
 ```go
-
 func ExampleHook(req *http.Request, resp *http.Response) {
 	log.Printf("Hook: Response status code: %d", resp.StatusCode)
 }
@@ -113,6 +113,20 @@ apiClient := vortex.New(vortex.Opt{
 
 resp, err := apiClient.
 		UseHook(ExampleHook)
+```
+
+## Stream Request (Experimental)
+```go
+func streamRequest(resp *http.Response) {
+	log.Printf("Stream: Response status code: %d", resp.StatusCode)
+}
+
+apiClient := vortex.New(vortex.Opt{
+    BaseURL: "https://lakasir.test",
+})
+
+_, err := apiClient.
+		Stream("POST", "/endpoint", map[string]interface{}{}, streamRequest)
 ```
 
 ## Contributing
@@ -150,3 +164,7 @@ We welcome contributions to the Vortex project! If you would like to contribute,
 8. **Review process**: Your pull request will be reviewed by the maintainers. Please be responsive to any feedback and make necessary changes.
 
 Thank you for contributing to Vortex!
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.

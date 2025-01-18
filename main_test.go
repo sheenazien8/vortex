@@ -1,6 +1,7 @@
 package vortex
 
 import (
+	"bufio"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -176,5 +177,36 @@ func TestHook(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status code 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestStream(t *testing.T) {
+	client := New(Opt{BaseURL: "http://example.com"})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("expected http.ResponseWriter to be an http.Flusher")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		for i := 0; i < 5; i++ {
+			fmt.Fprintf(w, "data: %d\n\n", i)
+			flusher.Flush()
+			time.Sleep(100 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	client.baseURL = server.URL
+	_, err := client.Stream("GET", "/stream", nil, func(resp *http.Response) error {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			t.Log(scanner.Text())
+		}
+		return scanner.Err()
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
 	}
 }
