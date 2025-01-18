@@ -10,6 +10,7 @@ go get github.com/sheenazien8/vortex
 - [x] Simple request
 - [x] POST, GET, DELETE, PUT, PATCH, DELETE
 - [x] Middleware
+- [x] Hook 
 
 
 ## Usage
