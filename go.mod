@@ -1,3 +1,3 @@
 module github.com/sheenazien8/vortex
 
-go 1.22.1
+go 1.19
