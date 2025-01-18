@@ -10,6 +10,9 @@ go get github.com/sheenazien8/vortex
 - [x] Simple request
 - [x] POST, GET, DELETE, PUT, PATCH, DELETE
 - [x] Middleware
+- [x] Generate curl command
+- [ ] Form Data Support
+- [ ] Form Upload Support
 
 
 ## Usage
@@ -69,6 +72,13 @@ func main() {
 
 	println(response.Data.Email)
 }
+```
+
+## Generate Curl Command
+```go
+curlCommand := resp.Request.GenerateCurlCommand()
+println("Generated Curl Command:", curlCommand)
+
 ```
 
 ## Middleware

@@ -99,10 +99,11 @@ func (c *Client) SetOutput(output interface{}) *Client {
 	return c
 }
 
-func (c *Client) doRequest(method, endpoint string, body interface{}) (*Response, error) {
+func (c *Client) doRequest(method, endpoint string, body interface{}) (response *Response, err error) {
 	var reqBody io.Reader
+	var jsonBody []byte
 	if body != nil {
-		jsonBody, err := json.Marshal(body)
+		jsonBody, err = json.Marshal(body)
 		if err != nil {
 			return nil, err
 		}
@@ -123,7 +124,6 @@ func (c *Client) doRequest(method, endpoint string, body interface{}) (*Response
 	c.addHeaders(req)
 
 	var request Request
-	var reqBodyBytes []byte
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp, err := c.httpClient.Do(r)
 		if err != nil {
@@ -132,7 +132,6 @@ func (c *Client) doRequest(method, endpoint string, body interface{}) (*Response
 		}
 		defer resp.Body.Close()
 
-		// Apply hooks
 		for _, hook := range c.hooks {
 			hook(r, resp)
 		}
@@ -149,15 +148,11 @@ func (c *Client) doRequest(method, endpoint string, body interface{}) (*Response
 			}
 		}
 
-		if reqBody != nil {
-			reqBodyBytes, _ = io.ReadAll(reqBody)
-		}
-
 		request = Request{
 			Method:  method,
 			URL:     req.URL.String(),
 			Headers: req.Header,
-			Body:    reqBodyBytes,
+			Body:    jsonBody,
 		}
 
 		w.Header().Set("StatusCode", fmt.Sprintf("%d", resp.StatusCode))
@@ -250,7 +245,7 @@ func (r *Request) GenerateCurlCommand() string {
 	}
 
 	if (r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH") && len(r.Body) > 0 {
-		curlCommand.WriteString(" -d '")
+		curlCommand.WriteString(" --data-raw '")
 		curlCommand.WriteString(string(r.Body))
 		curlCommand.WriteString("'")
 	}
