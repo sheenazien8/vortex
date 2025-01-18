@@ -210,66 +210,7 @@ func (c *Client) Patch(endpoint string, body interface{}) (*Response, error) {
 	return c.doRequest("PATCH", endpoint, body)
 }
 
-func (c *Client) Stream(method, endpoint string, body interface{}, streamHandler func(*http.Response) error) (*Response, error) {
-	var reqBody io.Reader
-	var jsonBody []byte
-	var err error
-	response := Response{
-		StatusCode: http.StatusInternalServerError,
-		Body:       nil,
-		Output:     nil,
-		Request: &Request{
-			Method:      method,
-			URL:         c.baseURL + endpoint,
-			Headers:     c.headers,
-			Body:        jsonBody,
-			QueryParams: c.queryParams,
-		},
-	}
-	if body != nil {
-		jsonBody, err = json.Marshal(body)
-		if err != nil {
-			return &response, err
-		}
-		reqBody = bytes.NewBuffer(jsonBody)
-	}
-
-	req, err := http.NewRequest(method, c.baseURL+endpoint, reqBody)
-	if err != nil {
-		return &response, err
-	}
-
-	if method == "GET" || method == "DELETE" {
-		req.URL.RawQuery = c.queryParams.Encode()
-	} else if method == "POST" || method == "PUT" || method == "PATCH" {
-		if c.headers.Get("Content-Type") == "" {
-			req.Header.Set("Content-Type", "application/json")
-		}
-	}
-
-	c.addHeaders(req)
-
-	for i := len(c.middleware) - 1; i >= 0; i-- {
-		handler := c.middleware[i](req, nil)
-		handler(nil, req)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return &response, err
-	}
-	defer resp.Body.Close()
-
-	for _, hook := range c.hooks {
-		hook(req, resp)
-	}
-
-	response.StatusCode = resp.StatusCode
-
-	return &response, streamHandler(resp)
-}
-
-func (c *Client) StreamBack(streamHandler func(*http.Response) error) *Client {
+func (c *Client) Stream(streamHandler func(*http.Response) error) *Client {
 	c.streamHandler = streamHandler
 	return c
 }

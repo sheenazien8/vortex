@@ -12,7 +12,7 @@ go get github.com/sheenazien8/vortex
 - [x] Middleware
 - [x] Generate curl command
 - [x] Hook 
-- [x] Stream Request (Experimental) 
+- [x] Stream Request
 - [ ] Form Data Support
 - [ ] Form Upload Support
 
@@ -115,7 +115,7 @@ resp, err := apiClient.
 		UseHook(ExampleHook)
 ```
 
-## Stream Request (Experimental)
+## Stream Request
 ```go
 func streamRequest(resp *http.Response) {
 	log.Printf("Stream: Response status code: %d", resp.StatusCode)
@@ -126,7 +126,8 @@ apiClient := vortex.New(vortex.Opt{
 })
 
 _, err := apiClient.
-		Stream("POST", "/endpoint", map[string]interface{}{}, streamRequest)
+		Stream(streamRequest).
+		Post("/test")
 ```
 
 ## Contributing

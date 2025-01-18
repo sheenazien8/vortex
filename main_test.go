@@ -199,13 +199,14 @@ func TestStream(t *testing.T) {
 	defer server.Close()
 
 	client.baseURL = server.URL
-	_, err := client.Stream("GET", "/stream", nil, func(resp *http.Response) error {
+	_, err := client.Stream(func(resp *http.Response) error {
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
 			t.Log(scanner.Text())
 		}
 		return scanner.Err()
-	})
+	}).
+	Get("/test")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
