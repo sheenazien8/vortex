@@ -8,7 +8,7 @@ go get github.com/sheenazien8/vortex
 
 ## Features
 - [x] Simple request
-- [x] POST, GET, DELETE, PUT, PATCH, DELETE
+- [x] POST, GET, DELETE, PUT, PATCH
 - [x] Middleware
 - [x] Generate curl command
 - [x] Hook 
