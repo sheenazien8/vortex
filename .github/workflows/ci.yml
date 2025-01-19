@@ -27,5 +27,13 @@ jobs:
     - name: Install dependencies
       run: go mod tidy
 
-    - name: Run tests
-      run: go test ./...
+    - name: Install coverage tool
+      run: go install github.com/mattn/goveralls@latest
+
+    - name: Run tests with coverage
+      run: go test -coverprofile=coverage.out ./...
+
+    - name: Upload coverage to Coveralls
+      env:
+        COVERALLS_TOKEN: ${{ secrets.COVERALL_SCREET }}
+      run: goveralls -coverprofile=coverage.out -service=github
