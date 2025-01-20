@@ -14,7 +14,7 @@ go get github.com/sheenazien8/vortex
 - [x] Hook 
 - [x] Stream Request
 - [x] Form File Path Upload Support
-- [ ] Form Data Support
+- [x] Form Data Support
 - [ ] Form Upload Support
 
 
