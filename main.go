@@ -2,6 +2,7 @@ package vortex
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,7 +38,8 @@ type Client struct {
 	hooks         []Hook
 	streamHandler func(*http.Response) error
 	formFilePath  map[string]string
-	formData  map[string]string
+	formData      map[string]string
+	insecure      bool
 }
 
 func (c *Client) UseMiddleware(middleware ...Middleware) *Client {
@@ -59,7 +61,13 @@ func New(opt Opt) *Client {
 		retries:     opt.Retries,
 		headers:     http.Header{},
 		queryParams: url.Values{},
+		insecure:    false,
 	}
+}
+
+func (c *Client) Insecure() *Client {
+	c.insecure = true
+	return c
 }
 
 func (c *Client) SetFormFilePath(key, filePath string) *Client {
@@ -225,7 +233,14 @@ func (c *Client) setRequestHeaders(req *http.Request, method string, writer *mul
 
 func (c *Client) createHandler(method string, req *http.Request, jsonBody []byte, request *Request) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp, err := c.httpClient.Do(r)
+		httpClient := c.httpClient
+		if c.insecure {
+			println("insecure")
+			httpClient.Transport = &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: c.insecure},
+			}
+		}
+		resp, err := httpClient.Do(r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -263,6 +278,7 @@ func (c *Client) createHandler(method string, req *http.Request, jsonBody []byte
 			Body:         jsonBody,
 			FormFilePath: c.formFilePath,
 			FormData:     c.formData,
+			insecure:     c.insecure,
 		}
 
 		w.Header().Set("StatusCode", fmt.Sprintf("%d", resp.StatusCode))
@@ -323,12 +339,16 @@ type Request struct {
 	QueryParams  url.Values
 	FormFilePath map[string]string
 	FormData     map[string]string
+	insecure     bool
 }
 
 func (r *Request) GenerateCurlCommand() string {
 	var curlCommand strings.Builder
-	curlCommand.WriteString("curl -X ")
-	curlCommand.WriteString(r.Method)
+	curlCommand.WriteString("curl")
+	if r.insecure {
+		curlCommand.WriteString(" -k ")
+	}
+	curlCommand.WriteString("-X " + r.Method)
 	curlCommand.WriteString(" \"")
 
 	if len(r.QueryParams) > 0 {
