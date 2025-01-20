@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -156,6 +157,28 @@ func TestMiddleware(t *testing.T) {
 	}
 }
 
+func TestSetFormFilePath(t *testing.T) {
+	client := New(Opt{BaseURL: "http://example.com"})
+
+	files := map[string]string{
+		"file1": "/path/to/file1.txt",
+		"file2": "/path/to/file2.txt",
+	}
+
+	client.SetFormFilePath("file1", files["file1"]).
+		SetFormFilePath("file2", files["file2"])
+
+	if len(client.formFilePath) != len(files) {
+		t.Fatalf("expected %d files, got %d", len(files), len(client.formFilePath))
+	}
+
+	for key, filePath := range files {
+		if client.formFilePath[key] != filePath {
+			t.Errorf("expected file path for %s to be %s, got %s", key, filePath, client.formFilePath[key])
+		}
+	}
+}
+
 func TestHook(t *testing.T) {
 	client := New(Opt{BaseURL: "http://example.com"})
 	client.UseHook(func(req *http.Request, resp *http.Response) {
@@ -206,8 +229,52 @@ func TestStream(t *testing.T) {
 		}
 		return scanner.Err()
 	}).
-	Get("/test")
+		Get("/test")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestGenerateCurlCommand(t *testing.T) {
+	req := &Request{
+		Method:  "POST",
+		URL:     "http://example.com/api",
+		Headers: http.Header{"Content-Type": []string{"application/json"}},
+		Body:    []byte(`{"key":"value"}`),
+		QueryParams: url.Values{
+			"param1": []string{"value1"},
+			"param2": []string{"value2"},
+		},
+	}
+
+	expectedCurlCommand := `curl -X POST "http://example.com/api?param1=value1&param2=value2" -H "Content-Type: application/json" --data-raw '{"key":"value"}'`
+
+	curlCommand := req.GenerateCurlCommand()
+
+	if curlCommand != expectedCurlCommand {
+		t.Errorf("Expected curl command: %s, but got: %s", expectedCurlCommand, curlCommand)
+	}
+
+	reqMultipart := &Request{
+		Method: "POST",
+		URL:    "http://example.com/upload",
+		Headers: http.Header{
+			"Content-Type": []string{"multipart/form-data"},
+		},
+		FormFilePath: map[string]string{
+			"file1": "/path/to/file1.txt",
+			"file2": "/path/to/file2.txt",
+		},
+		FormData: map[string]string{
+			"field1": "value1",
+		},
+	}
+
+	expectedCurlCommandMultipart := `curl -X POST "http://example.com/upload" -H "Content-Type: multipart/form-data" -F "file1=@/path/to/file1.txt" -F "file2=@/path/to/file2.txt" -F "field1=value1"`
+
+	curlCommandMultipart := reqMultipart.GenerateCurlCommand()
+
+	if curlCommandMultipart != expectedCurlCommandMultipart {
+		t.Errorf("Expected curl command: %s, but got: %s", expectedCurlCommandMultipart, curlCommandMultipart)
 	}
 }

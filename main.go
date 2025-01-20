@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -33,6 +36,8 @@ type Client struct {
 	middleware    []Middleware
 	hooks         []Hook
 	streamHandler func(*http.Response) error
+	formFilePath  map[string]string
+	formData  map[string]string
 }
 
 func (c *Client) UseMiddleware(middleware ...Middleware) *Client {
@@ -55,6 +60,24 @@ func New(opt Opt) *Client {
 		headers:     http.Header{},
 		queryParams: url.Values{},
 	}
+}
+
+func (c *Client) SetFormFilePath(key, filePath string) *Client {
+	if c.formFilePath == nil {
+		c.formFilePath = make(map[string]string)
+	}
+	c.formFilePath[key] = filePath
+	return c
+}
+
+func (c *Client) SetFormData(params map[string]string) *Client {
+	if c.formData == nil {
+		c.formData = make(map[string]string)
+	}
+	for key, value := range params {
+		c.formData[key] = value
+	}
+	return c
 }
 
 func (c *Client) SetHeader(key, value string) *Client {
@@ -101,14 +124,9 @@ func (c *Client) SetOutput(output interface{}) *Client {
 }
 
 func (c *Client) doRequest(method, endpoint string, body interface{}) (response *Response, err error) {
-	var reqBody io.Reader
-	var jsonBody []byte
-	if body != nil {
-		jsonBody, err = json.Marshal(body)
-		if err != nil {
-			return nil, err
-		}
-		reqBody = bytes.NewBuffer(jsonBody)
+	reqBody, jsonBody, writer, err := c.prepareRequestBody(body)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(method, c.baseURL+endpoint, reqBody)
@@ -116,18 +134,97 @@ func (c *Client) doRequest(method, endpoint string, body interface{}) (response 
 		return nil, err
 	}
 
-	if method == "GET" || method == "DELETE" {
+	c.setRequestHeaders(req, method, writer)
+
+	var request Request
+	handler := c.createHandler(method, req, jsonBody, &request)
+
+	for i := len(c.middleware) - 1; i >= 0; i-- {
+		handler = c.middleware[i](req, handler)
+	}
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	return &Response{
+		StatusCode: recorder.Result().StatusCode,
+		Body:       recorder.Body.Bytes(),
+		Output:     c.output,
+		Request:    &request,
+	}, nil
+}
+
+func (c *Client) prepareRequestBody(body interface{}) (io.Reader, []byte, *multipart.Writer, error) {
+	var reqBody io.Reader
+	var jsonBody []byte
+	var bodyBuffer *bytes.Buffer
+	var writer *multipart.Writer
+	var err error
+
+	if len(c.formFilePath) > 0 || len(c.formData) > 0 {
+		bodyBuffer = &bytes.Buffer{}
+		writer = multipart.NewWriter(bodyBuffer)
+		err = c.writeFormData(writer)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		reqBody = bodyBuffer
+	} else if body != nil {
+		jsonBody, err = json.Marshal(body)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		reqBody = bytes.NewBuffer(jsonBody)
+	}
+
+	return reqBody, jsonBody, writer, nil
+}
+
+func (c *Client) writeFormData(writer *multipart.Writer) error {
+	for key, filePath := range c.formFilePath {
+		file, err := os.Open(filePath)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		part, err := writer.CreateFormFile(key, filepath.Base(file.Name()))
+		if err != nil {
+			return err
+		}
+
+		_, err = io.Copy(part, file)
+		if err != nil {
+			return err
+		}
+	}
+
+	for key, value := range c.formData {
+		_ = writer.WriteField(key, value)
+	}
+
+	return writer.Close()
+}
+
+func (c *Client) setRequestHeaders(req *http.Request, method string, writer *multipart.Writer) {
+	switch method {
+	case "GET", "DELETE":
 		req.URL.RawQuery = c.queryParams.Encode()
-	} else if method == "POST" || method == "PUT" || method == "PATCH" {
-		if c.headers.Get("Content-Type") == "" {
+	case "POST", "PUT", "PATCH":
+		if c.headers.Get("Content-Type") == "" && len(c.formFilePath) == 0 {
 			req.Header.Set("Content-Type", "application/json")
 		}
 	}
 
-	c.addHeaders(req)
+	if len(c.formFilePath) > 0 || len(c.formData) > 0 {
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+	}
 
-	var request Request
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c.addHeaders(req)
+}
+
+func (c *Client) createHandler(method string, req *http.Request, jsonBody []byte, request *Request) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp, err := c.httpClient.Do(r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -159,11 +256,13 @@ func (c *Client) doRequest(method, endpoint string, body interface{}) (response 
 			}
 		}
 
-		request = Request{
-			Method:  method,
-			URL:     req.URL.String(),
-			Headers: req.Header,
-			Body:    jsonBody,
+		*request = Request{
+			Method:       method,
+			URL:          req.URL.String(),
+			Headers:      req.Header,
+			Body:         jsonBody,
+			FormFilePath: c.formFilePath,
+			FormData:     c.formData,
 		}
 
 		w.Header().Set("StatusCode", fmt.Sprintf("%d", resp.StatusCode))
@@ -174,20 +273,6 @@ func (c *Client) doRequest(method, endpoint string, body interface{}) (response 
 			return
 		}
 	})
-
-	for i := len(c.middleware) - 1; i >= 0; i-- {
-		handler = c.middleware[i](req, handler)
-	}
-
-	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, req)
-
-	return &Response{
-		StatusCode: recorder.Result().StatusCode,
-		Body:       recorder.Body.Bytes(),
-		Output:     c.output,
-		Request:    &request,
-	}, nil
 }
 
 func (c *Client) Get(endpoint string) (*Response, error) {
@@ -231,11 +316,13 @@ type Response struct {
 }
 
 type Request struct {
-	Method      string
-	URL         string
-	Headers     http.Header
-	Body        []byte
-	QueryParams url.Values
+	Method       string
+	URL          string
+	Headers      http.Header
+	Body         []byte
+	QueryParams  url.Values
+	FormFilePath map[string]string
+	FormData     map[string]string
 }
 
 func (r *Request) GenerateCurlCommand() string {
@@ -243,16 +330,22 @@ func (r *Request) GenerateCurlCommand() string {
 	curlCommand.WriteString("curl -X ")
 	curlCommand.WriteString(r.Method)
 	curlCommand.WriteString(" \"")
-	curlCommand.WriteString(r.URL)
-	curlCommand.WriteString("\"")
 
 	if len(r.QueryParams) > 0 {
+		curlCommand.WriteString(r.URL)
 		curlCommand.WriteString("?")
 		curlCommand.WriteString(r.QueryParams.Encode())
+	} else {
+		curlCommand.WriteString(r.URL)
 	}
+	curlCommand.WriteString("\"")
 
 	for key, values := range r.Headers {
 		for _, value := range values {
+			// remove boundary from content type
+			if key == "Content-Type" && strings.Contains(value, "boundary") {
+				value = strings.Split(value, ";")[0]
+			}
 			curlCommand.WriteString(" -H \"")
 			curlCommand.WriteString(key)
 			curlCommand.WriteString(": ")
@@ -261,10 +354,30 @@ func (r *Request) GenerateCurlCommand() string {
 		}
 	}
 
-	if (r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH") && len(r.Body) > 0 {
-		curlCommand.WriteString(" --data-raw '")
-		curlCommand.WriteString(string(r.Body))
-		curlCommand.WriteString("'")
+	if (r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH") && len(r.Body) > 0 || len(r.FormFilePath) > 0 || len(r.FormData) > 0 {
+		contentType := r.Headers.Get("Content-Type")
+		if strings.Contains(contentType, "multipart/form-data") {
+			for key, filePath := range r.FormFilePath {
+				curlCommand.WriteString(" -F \"")
+				curlCommand.WriteString(key)
+				curlCommand.WriteString("=@")
+				curlCommand.WriteString(filePath)
+				curlCommand.WriteString("\"")
+			}
+
+			for key, value := range r.FormData {
+				curlCommand.WriteString(" -F \"")
+				curlCommand.WriteString(key)
+				curlCommand.WriteString("=")
+				curlCommand.WriteString(value)
+				curlCommand.WriteString("\"")
+			}
+
+		} else {
+			curlCommand.WriteString(" --data-raw '")
+			curlCommand.WriteString(string(r.Body))
+			curlCommand.WriteString("'")
+		}
 	}
 
 	return curlCommand.String()

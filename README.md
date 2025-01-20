@@ -13,6 +13,7 @@ go get github.com/sheenazien8/vortex
 - [x] Generate curl command
 - [x] Hook 
 - [x] Stream Request
+- [x] Form File Path Upload Support
 - [ ] Form Data Support
 - [ ] Form Upload Support
 
@@ -128,6 +129,20 @@ apiClient := vortex.New(vortex.Opt{
 _, err := apiClient.
 		Stream(streamRequest).
 		Post("/test")
+```
+
+## File Path Upload Support
+```go
+apiClient := vortex.New(vortex.Opt{
+    BaseURL: "https://lakasir.test",
+})
+uploadRes, err := apiClient.
+	SetHeader("Accept", "application/json").
+	SetFormFilePath(map[string]string{
+		"file": "./test_image.png", // you can use relative path or absolute path
+	}).
+	Post("/api/temp/upload", map[string]interface{}{})
+
 ```
 
 ## Contributing
