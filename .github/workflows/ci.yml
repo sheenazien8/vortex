@@ -35,5 +35,5 @@ jobs:
 
     - name: Upload coverage to Coveralls
       env:
-        COVERALLS_TOKEN: ${{ secrets.COVERALL_SCREET }}
+        COVERALLS_REPO_TOKEN: ${{ secrets.COVERALL_SCREET }}
       run: goveralls -coverprofile=coverage.out -service=github
