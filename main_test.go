@@ -235,6 +235,15 @@ func TestStream(t *testing.T) {
 	}
 }
 
+func TestClientIsecure(t *testing.T) {
+	client := New(Opt{})
+	client.Insecure()
+
+	if !client.insecure {
+		t.Errorf("Expected client.insecure to be true, got %v", client.insecure)
+	}
+}
+
 func TestGenerateCurlCommand(t *testing.T) {
 	req := &Request{
 		Method:  "POST",
@@ -276,5 +285,27 @@ func TestGenerateCurlCommand(t *testing.T) {
 
 	if curlCommandMultipart != expectedCurlCommandMultipart {
 		t.Errorf("Expected curl command: %s, but got: %s", expectedCurlCommandMultipart, curlCommandMultipart)
+	}
+}
+
+func TestGenerateCurlCommandWithInsecureFlag(t *testing.T) {
+	req := &Request{
+		Method:  "POST",
+		URL:     "https://example.com/api",
+		Headers: http.Header{"Content-Type": []string{"application/json"}},
+		Body:    []byte(`{"key":"value"}`),
+		QueryParams: url.Values{
+			"param1": []string{"value1"},
+			"param2": []string{"value2"},
+		},
+		insecure: true,
+	}
+
+	expectedCurlCommand := `curl -k -X POST "https://example.com/api?param1=value1&param2=value2" -H "Content-Type: application/json" --data-raw '{"key":"value"}'`
+
+	curlCommand := req.GenerateCurlCommand()
+
+	if curlCommand != expectedCurlCommand {
+		t.Errorf("Expected curl command: %s, but got: %s", expectedCurlCommand, curlCommand)
 	}
 }

@@ -346,9 +346,9 @@ func (r *Request) GenerateCurlCommand() string {
 	var curlCommand strings.Builder
 	curlCommand.WriteString("curl")
 	if r.insecure {
-		curlCommand.WriteString(" -k ")
+		curlCommand.WriteString(" -k")
 	}
-	curlCommand.WriteString("-X " + r.Method)
+	curlCommand.WriteString(" -X " + r.Method)
 	curlCommand.WriteString(" \"")
 
 	if len(r.QueryParams) > 0 {
