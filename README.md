@@ -23,7 +23,7 @@ go get github.com/sheenazien8/vortex
 - [x] Stream Request
 - [x] Form File Path Upload Support
 - [x] Form Data Support
-- [ ] Form Upload Support
+- [x] Form Upload Support
 
 
 ## Usage
@@ -146,11 +146,24 @@ apiClient := vortex.New(vortex.Opt{
 })
 uploadRes, err := apiClient.
 	SetHeader("Accept", "application/json").
-	SetFormFilePath(map[string]string{
-		"file": "./test_image.png", // you can use relative path or absolute path
-	}).
-	Post("/api/temp/upload", map[string]interface{}{})
+	SetFormFilePath("file",  "./test_image.png").
+	Post("/api/temp/upload", nil)
+```
 
+## File Upload Support
+```go
+apiClient := vortex.New(vortex.Opt{
+    BaseURL: "https://lakasir.test",
+})
+pathFile := "./test_image.png"
+file, err := os.Open(pathFile)
+if err != nil {
+	panic(err)
+}
+uploadRes, err := apiClient.
+	SetHeader("Accept", "application/json").
+	SetFormFile("file", file).
+	Post("/api/temp/upload", nil)
 ```
 
 ## Contributing

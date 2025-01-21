@@ -2,10 +2,15 @@ package vortex
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,6 +89,25 @@ func TestSetQueryParams(t *testing.T) {
 	}
 }
 
+func TestSetQueryParamFromInterface(t *testing.T) {
+	client := New(Opt{})
+	params := struct {
+		Key1 string `json:"key1"`
+		Key2 int    `json:"key2"`
+	}{
+		Key1: "value1",
+		Key2: 2,
+	}
+	client.SetQueryParamFromInterface(params)
+
+	if client.queryParams.Get("key1") != "value1" {
+		t.Errorf("expected query param key1 to be value1, got %s", client.queryParams.Get("key1"))
+	}
+	if client.queryParams.Get("key2") != "2" {
+		t.Errorf("expected query param key2 to be 2, got %s", client.queryParams.Get("key2"))
+	}
+}
+
 func TestGet(t *testing.T) {
 	client := New(Opt{BaseURL: "http://example.com"})
 	client.SetQueryParam("key", "value")
@@ -145,8 +169,6 @@ func TestMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"message": "success"}`))
 	}))
-	defer server.Close()
-
 	client.baseURL = server.URL
 	resp, err := client.Get("/test")
 	if err != nil {
@@ -175,6 +197,134 @@ func TestSetFormFilePath(t *testing.T) {
 	for key, filePath := range files {
 		if client.formFilePath[key] != filePath {
 			t.Errorf("expected file path for %s to be %s, got %s", key, filePath, client.formFilePath[key])
+		}
+	}
+}
+
+func TestWriteFormData(t *testing.T) {
+	client := New(Opt{BaseURL: "http://example.com"})
+
+	// Create temporary files for testing
+	tempFile1, err := os.CreateTemp("", "file1.txt")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tempFile1.Name())
+	tempFile1.WriteString("file1 content")
+	tempFile1.Seek(0, 0)
+
+	tempFile2, err := os.CreateTemp("", "file2.txt")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tempFile2.Name())
+	tempFile2.WriteString("file2 content")
+	tempFile2.Seek(0, 0)
+
+	client.SetFormFilePath("file1", tempFile1.Name())
+	client.SetFormFile("file2", tempFile2)
+
+	formData := map[string]string{
+		"field1": "value1",
+		"field2": "value2",
+	}
+	client.SetFormData(formData)
+
+	bodyBuffer := &bytes.Buffer{}
+	writer := multipart.NewWriter(bodyBuffer)
+
+	err = client.writeFormData(writer)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Verify the multipart content
+	contentType := writer.FormDataContentType()
+	if !strings.HasPrefix(contentType, "multipart/form-data") {
+		t.Errorf("expected content type to start with multipart/form-data, got %s", contentType)
+	}
+
+	// Parse the multipart content
+	reader := multipart.NewReader(bodyBuffer, writer.Boundary())
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		partName := part.FormName()
+		if partName == "file1" {
+			content, err := io.ReadAll(part)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if string(content) != "file1 content" {
+				t.Errorf("expected file1 content to be 'file1 content', got %s", string(content))
+			}
+		} else if partName == "file2" {
+			content, err := io.ReadAll(part)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if string(content) != "file2 content" {
+				t.Errorf("expected file2 content to be 'file2 content', got %s", string(content))
+			}
+		} else if value, ok := formData[partName]; ok {
+			content, err := io.ReadAll(part)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if string(content) != value {
+				t.Errorf("expected form field %s to be %s, got %s", partName, value, string(content))
+			}
+		} else {
+			t.Errorf("unexpected form field %s", partName)
+		}
+	}
+}
+
+func TestSetFormFile(t *testing.T) {
+	client := New(Opt{BaseURL: "http://example.com"})
+
+	file1 := &os.File{}
+	file2 := &os.File{}
+
+	client.SetFormFile("file1", file1).
+		SetFormFile("file2", file2)
+
+	if len(client.formFile) != 2 {
+		t.Fatalf("expected 2 files, got %d", len(client.formFile))
+	}
+
+	if client.formFile["file1"] != file1 {
+		t.Errorf("expected file1 to be set correctly")
+	}
+
+	if client.formFile["file2"] != file2 {
+		t.Errorf("expected file2 to be set correctly")
+	}
+}
+
+func TestSetFormData(t *testing.T) {
+	client := New(Opt{BaseURL: "http://example.com"})
+
+	formData := map[string]string{
+		"field1": "value1",
+		"field2": "value2",
+	}
+
+	client.SetFormData(formData)
+
+	if len(client.formData) != len(formData) {
+		t.Fatalf("expected %d form data fields, got %d", len(formData), len(client.formData))
+	}
+
+	for key, value := range formData {
+		if client.formData[key] != value {
+			t.Errorf("expected form data for %s to be %s, got %s", key, value, client.formData[key])
 		}
 	}
 }
@@ -288,6 +438,34 @@ func TestGenerateCurlCommand(t *testing.T) {
 	}
 }
 
+func TestGenerateCurlCommandWithValidFormFile(t *testing.T) {
+	fileName := "test.txt"
+	mockFile, err := NewMockFile(&fileName)
+	if err != nil {
+		t.Fatalf("Failed to create mock file: %v", err)
+	}
+	defer mockFile.Close()
+	mockFile.SetName("valid.txt")
+
+	req := &Request{
+		Method: "POST",
+		URL:    "http://example.com/upload",
+		Headers: http.Header{
+			"Content-Type": []string{"multipart/form-data"},
+		},
+		FormFile: map[string]multipart.File{
+			"file1": mockFile,
+		},
+	}
+
+	curlCommand := req.GenerateCurlCommand()
+	expectedCurlCommand := `curl -X POST "http://example.com/upload" -H "Content-Type: multipart/form-data" -F "file1=@valid.txt"`
+
+	if curlCommand != expectedCurlCommand {
+		t.Errorf("Expected curl command to be same with %s, but got: %s", expectedCurlCommand, curlCommand)
+	}
+}
+
 func TestGenerateCurlCommandWithInsecureFlag(t *testing.T) {
 	req := &Request{
 		Method:  "POST",
@@ -308,4 +486,104 @@ func TestGenerateCurlCommandWithInsecureFlag(t *testing.T) {
 	if curlCommand != expectedCurlCommand {
 		t.Errorf("Expected curl command: %s, but got: %s", expectedCurlCommand, curlCommand)
 	}
+}
+
+type MockFile struct {
+	*os.File
+	data       []byte
+	currentPos int64
+	readError  error
+	writeError error
+	closeError error
+	name       string
+}
+
+func NewMockFile(name *string) (*MockFile, error) {
+	realFile, err := os.CreateTemp("", *name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MockFile{
+		File: realFile,
+		data: []byte{},
+	}, nil
+}
+
+func (m *MockFile) Read(p []byte) (n int, err error) {
+	if m.readError != nil {
+		return 0, m.readError
+	}
+
+	if m.currentPos >= int64(len(m.data)) {
+		return 0, io.EOF
+	}
+
+	n = copy(p, m.data[m.currentPos:])
+	m.currentPos += int64(n)
+	return n, nil
+}
+
+func (m *MockFile) ReadAt(p []byte, a int64) (n int, err error) {
+	if m.readError != nil {
+		return 0, m.readError
+	}
+
+	if m.currentPos >= int64(len(m.data)) {
+		return 0, io.EOF
+	}
+
+	n = copy(p, m.data[m.currentPos:])
+	m.currentPos += int64(n)
+	return n, nil
+}
+
+func (m *MockFile) Write(p []byte) (n int, err error) {
+	if m.writeError != nil {
+		return 0, m.writeError
+	}
+
+	m.data = append(m.data, p...)
+	return len(p), nil
+}
+
+func (m *MockFile) Close() error {
+	return m.closeError
+}
+
+func (m *MockFile) Seek(offset int64, whence int) (int64, error) {
+	if m.readError != nil {
+		return 0, m.readError
+	}
+
+	switch whence {
+	case io.SeekStart:
+		m.currentPos = offset
+	case io.SeekCurrent:
+		m.currentPos += offset
+	case io.SeekEnd:
+		m.currentPos = int64(len(m.data)) + offset
+	}
+
+	return m.currentPos, nil
+}
+
+func (m *MockFile) Name() string {
+	return m.name
+}
+
+func (m *MockFile) SetName(name string) {
+	m.name = name
+}
+
+func (m *MockFile) SetReadError(err error) {
+	m.readError = err
+}
+
+func (m *MockFile) SetWriteError(err error) {
+	m.writeError = err
+}
+
+func (m *MockFile) SetCloseError(err error) {
+	m.closeError = err
 }

@@ -40,6 +40,7 @@ type Client struct {
 	formFilePath  map[string]string
 	formData      map[string]string
 	insecure      bool
+	formFile     map[string]multipart.File
 }
 
 func (c *Client) UseMiddleware(middleware ...Middleware) *Client {
@@ -75,6 +76,14 @@ func (c *Client) SetFormFilePath(key, filePath string) *Client {
 		c.formFilePath = make(map[string]string)
 	}
 	c.formFilePath[key] = filePath
+	return c
+}
+
+func (c *Client) SetFormFile(fieldName string, file multipart.File) *Client {
+	if c.formFile == nil {
+		c.formFile = make(map[string]multipart.File)
+	}
+	c.formFile[fieldName] = file
 	return c
 }
 
@@ -169,7 +178,7 @@ func (c *Client) prepareRequestBody(body interface{}) (io.Reader, []byte, *multi
 	var writer *multipart.Writer
 	var err error
 
-	if len(c.formFilePath) > 0 || len(c.formData) > 0 {
+	if len(c.formFilePath) > 0 || len(c.formData) > 0 || len(c.formFile) > 0 {
 		bodyBuffer = &bytes.Buffer{}
 		writer = multipart.NewWriter(bodyBuffer)
 		err = c.writeFormData(writer)
@@ -211,6 +220,22 @@ func (c *Client) writeFormData(writer *multipart.Writer) error {
 		_ = writer.WriteField(key, value)
 	}
 
+	for fieldname, file := range c.formFile {
+		fileHeader, ok := file.(*os.File)
+		if !ok {
+			return fmt.Errorf("file is not an *os.File")
+		}
+		defer fileHeader.Close()
+		part, err := writer.CreateFormFile(fieldname, fileHeader.Name())
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(part, file)
+		if err != nil {
+			return err
+		}
+	}
+
 	return writer.Close()
 }
 
@@ -224,7 +249,7 @@ func (c *Client) setRequestHeaders(req *http.Request, method string, writer *mul
 		}
 	}
 
-	if len(c.formFilePath) > 0 || len(c.formData) > 0 {
+	if len(c.formFilePath) > 0 || len(c.formData) > 0 || len(c.formFile) > 0 {
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 	}
 
@@ -278,6 +303,7 @@ func (c *Client) createHandler(method string, req *http.Request, jsonBody []byte
 			Body:         jsonBody,
 			FormFilePath: c.formFilePath,
 			FormData:     c.formData,
+			FormFile:     c.formFile,
 			insecure:     c.insecure,
 		}
 
@@ -339,7 +365,13 @@ type Request struct {
 	QueryParams  url.Values
 	FormFilePath map[string]string
 	FormData     map[string]string
+	FormFile     map[string]multipart.File
 	insecure     bool
+}
+
+type NamedFile interface {
+    Name() string
+    multipart.File
 }
 
 func (r *Request) GenerateCurlCommand() string {
@@ -362,7 +394,6 @@ func (r *Request) GenerateCurlCommand() string {
 
 	for key, values := range r.Headers {
 		for _, value := range values {
-			// remove boundary from content type
 			if key == "Content-Type" && strings.Contains(value, "boundary") {
 				value = strings.Split(value, ";")[0]
 			}
@@ -374,7 +405,7 @@ func (r *Request) GenerateCurlCommand() string {
 		}
 	}
 
-	if (r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH") && len(r.Body) > 0 || len(r.FormFilePath) > 0 || len(r.FormData) > 0 {
+	if (r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH") && len(r.Body) > 0 || len(r.FormFilePath) > 0 || len(r.FormData) > 0 || len(r.FormFile) > 0 {
 		contentType := r.Headers.Get("Content-Type")
 		if strings.Contains(contentType, "multipart/form-data") {
 			for key, filePath := range r.FormFilePath {
@@ -393,6 +424,17 @@ func (r *Request) GenerateCurlCommand() string {
 				curlCommand.WriteString("\"")
 			}
 
+			for fieldname, file := range r.FormFile {
+				namedFile, ok := file.(NamedFile)
+				if !ok {
+					return ""
+				}
+				curlCommand.WriteString(" -F \"")
+				curlCommand.WriteString(fieldname)
+				curlCommand.WriteString("=@")
+				curlCommand.WriteString(namedFile.Name())
+				curlCommand.WriteString("\"")
+			}
 		} else {
 			curlCommand.WriteString(" --data-raw '")
 			curlCommand.WriteString(string(r.Body))
