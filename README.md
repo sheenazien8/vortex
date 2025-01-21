@@ -11,7 +11,7 @@ Simple HTTP and REST client library for Go, Inspired by Guzzle HTTP client from 
 
 ## Installation
 ```sh
-go get github.com/sheenazien8/vortex
+go get github.com/sheenazien8/vortex@v1.0.0
 ```
 
 ## Features
