@@ -6,6 +6,7 @@ Simple HTTP and REST client library for Go, Inspired by Guzzle HTTP client from 
 [![GitHub release](https://img.shields.io/github/release/sheenazien8/vortex.svg)](https://GitHub.com/sheenazien8/vortex/releases/)
 [![CI](https://github.com/sheenazien8/vortex/actions/workflows/ci.yml/badge.svg)](https://github.com/sheenazien8/vortex/actions/workflows/ci.yml)
 [![Coverage Status](https://coveralls.io/repos/github/sheenazien8/vortex/badge.svg?branch=master)](https://coveralls.io/github/sheenazien8/vortex?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sheenazien8/vortex)](https://goreportcard.com/report/github.com/sheenazien8/vortex)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Installation
