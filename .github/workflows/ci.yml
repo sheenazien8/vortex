@@ -2,9 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - v1.x
+    paths-ignore:
+      - '**.md'
   pull_request:
-    branches: [ master ]
+    branches:
+      - master
+      - v1.x
+    paths-ignore:
+      - '**.md'
 
 jobs:
   build:
